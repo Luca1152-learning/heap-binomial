@@ -3,25 +3,27 @@
 
 using namespace std;
 
+const int nMax = 105;
+
 struct Nod {
     int val = 0, ordin = 0;
-    Nod *pPrec = nullptr, *pFrate = nullptr, *pFiu = nullptr;
+    Nod *pFrate = nullptr, *pFiu = nullptr;
 };
 
 class HeapBinomial {
 private:
-    Nod *m_pStart;
+    Nod *m_pStart = nullptr;
 
     static void faSubarboreStang(Nod *viitorSubarbore, Nod *tata) {
+        // viitorSubarbore devine subarborele stang al lui tata
         viitorSubarbore->pFrate = tata->pFiu;
         tata->pFiu = viitorSubarbore;
         tata->ordin++;
     }
 
     void consolideaza() {
-        // Daca nodul de start este null, va da eroare initializarea lui pUrm. Si oricum, un heap gol
-        // nu trebuie consolidat
         if (m_pStart == nullptr) {
+            // Un heap gol nu trebuie consolidat
             return;
         }
 
@@ -37,33 +39,34 @@ private:
 
                 if (pUrm->ordin && pUrm->pFrate && pUrm->ordin == pUrm->pFrate->ordin) {
                     // Sunt 3 arbori care au acelasi ordin. Ultimii doi trebuie reuniti (si nu primii doi), pentru
-                    // a pastra ordinea crescatoare a ordinelor arborilor
+                    // a pastra ordinea crescatoare a ordinelor arborilor. Deci ignora si pasul curent.
                     //
-                    // In situatia asta se poate ajunge daca trebuie sa consolidam (de exemplu):
+                    // In situatia asta se poate ajunge daca trebuie sa consolidam (de exemplu) arborii de dimensiune:
                     // 1 4 8 8 16 16 32 => 1 4 !16 16 16! 32
                     pPrec = pCurr;
                     pCurr = pUrm;
                     pUrm = pUrm->pFrate;
                 } else {
-                    // Sunt numai 2 arbori cu acelasi ordin ce trebuie reuniti
+                    // Sunt exact 2 arbori cu acelasi ordin ce trebuie reuniti
 
                     if (pCurr->val > pUrm->val) {
                         // Arborele urmator trebuie unit in cel curent
                         pCurr->pFrate = pUrm->pFrate;
                         faSubarboreStang(pUrm, pCurr);
 
-                        // pPrec si pCurr nu se modifica, din moment ce pPrec-pCurr-pUrm devine pPrec-[pCurr->pUrm]-pUrm actualizat
+                        // pPrec si pCurr nu se modifica, din moment ce pPrec-pCurr-pUrm devine pPrec-[pCurr->pUrm]-[pUrm actualizat]
                         pUrm = pUrm->pFrate;
                     } else {
                         // Arborele curent trebuie unit in cel urmator
                         if (pPrec) {
                             pPrec->pFrate = pUrm;
                         } else {
+                            // Arborele pCurr este radacina, deci trebuie actualizata cu urmatorul arbore
                             m_pStart = pUrm;
                         }
                         faSubarboreStang(pCurr, pUrm);
 
-                        // pPrec nu se modifica, din moment ce pPrec-pCurr-pUrm devine pPrec-[pUrm->pCurr]-pUrm actualizat
+                        // pPrec nu se modifica, din moment ce pPrec-pCurr-pUrm devine pPrec-[pUrm->pCurr]-[pUrm actualizat]
                         pCurr = pUrm;
                         pUrm = pUrm->pFrate;
                     }
@@ -82,6 +85,8 @@ public:
         pNod->pFrate = m_pStart;
         m_pStart = pNod;
 
+        // E posibil ca acum sa avem arbori de dimensiune (de exemplu) !1 1! 2 4 16 64, deci trebuie sa ii unim pe
+        // primii doi (si apoi, in cazul de fata, sa reunim si cu arborii de 2 si 4 - deci nu e asa simplu)
         consolideaza();
     }
 
@@ -100,41 +105,53 @@ public:
             return pHeapReunit;
         }
 
+        // pUlt va fi un fel de iterator ce va pointa catre ultimul arbore, ca sa poata fi adaugati arbori dupa el
+        // (din moment ce, intr-un heap binomial, nu retinem implicit si pointer catre ultimul arbore)
         Nod *pUlt = pHeapReunit->m_pStart;
 
+        // Interclaseaza cei doi arbori crescator, dupa ordin
         while (pNodA && pNodB) {
             if (pNodA->ordin < pNodB->ordin) {
                 pUlt->pFrate = pNodA;
+
                 pUlt = pUlt->pFrate;
                 pNodA = pNodA->pFrate;
             } else {
                 pUlt->pFrate = pNodB;
+
                 pUlt = pUlt->pFrate;
                 pNodB = pNodB->pFrate;
             }
         }
         while (pNodA) {
             pUlt->pFrate = pNodA;
+
             pUlt = pUlt->pFrate;
             pNodA = pNodA->pFrate;
         }
         while (pNodB) {
             pUlt->pFrate = pNodB;
+
             pUlt = pUlt->pFrate;
             pNodB = pNodB->pFrate;
         }
 
+        // E foarte probabil sa avem dubluri dupa o reuniune, deci trebuie sa consolidam noul arbore
         pHeapReunit->consolideaza();
 
         return pHeapReunit;
     }
 
     void extrageMaxim() {
-        // Problema ne asigura ca nu se va extrage dintr-un heap vid, deci sigur exista primul element
-        int maxValue = m_pStart->val;
-        Nod *pPrecMaxim = nullptr, *pMaxim = m_pStart;
+        // Nu exista niciun nod (/arbore) in heap
+        if (m_pStart == nullptr) {
+            return;
+        }
 
-        Nod *pIt = m_pStart;
+        // Cautam nodul de maxim. Nu apelam getMaxim(), deoarece avem nevoie si de predecesorul sau, pentru a putea
+        // pastra legaturile dupa eliminarea sa in lista inlantuita.
+        int maxValue = m_pStart->val;
+        Nod *pPrecMaxim = nullptr, *pMaxim = m_pStart, *pIt = m_pStart;
         while (pIt && pIt->pFrate) {
             if (pIt->pFrate->val > maxValue) {
                 pPrecMaxim = pIt;
@@ -150,7 +167,7 @@ public:
 
         // Creeaza heap-ul din subarbori, sortandu-i in ordine crescatoare, dupa ordin.
         // Subarborii unui nod sunt in ordine descrescatoare a ordinului (fiii lui B_k sunt B_(k-1), B_(k-2), ..., B_0),
-        // deci ordinea lor va trebui inversata
+        // deci ordinea lor va trebui inversata.
         Nod *pCurr = pMaxim->pFiu;
         while (pCurr) {
             Nod *pFrate = pCurr->pFrate;
@@ -163,6 +180,7 @@ public:
 
         // Sterge nodul de maxim, inlocuindu-l cu urmatorul arbore din heap
         if (pPrecMaxim == nullptr) {
+            // Nodul de maxim este chiar radacina
             m_pStart = pMaxim->pFrate;
         } else {
             pPrecMaxim->pFrate = pMaxim->pFrate;
@@ -174,9 +192,11 @@ public:
     }
 
     Nod *getMaxim() const {
+        // Setup initial
         int maxValue = INT_MIN;
         Nod *pNodMax = nullptr;
 
+        // Parcurge radacina fiecarui subarbore si compara cu maximul de la pasul precedent
         Nod *pIt = m_pStart;
         while (pIt) {
             if (pIt->val > maxValue) {
@@ -190,11 +210,12 @@ public:
     }
 
     void reset() {
+        // m_pStart e privat, deci atunci cand facem merge(A, B) si B trebuie sa devina gol, trebuie apelat reset()
         m_pStart = nullptr;
     }
 };
 
-HeapBinomial h[105];
+HeapBinomial h[nMax];
 
 int main() {
     freopen("mergeheap.in", "r", stdin);
