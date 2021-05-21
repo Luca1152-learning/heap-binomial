@@ -1,25 +1,19 @@
 #include <iostream>
+#include <climits>
 
 using namespace std;
 
 struct Nod {
     int val = 0, ordin = 0;
-    Nod *pFrate = nullptr, *pFiu = nullptr, *pTata = nullptr;
-
-    void reset() {
-        val = ordin = 0;
-        pFrate = pFiu = pTata = nullptr;
-    }
+    Nod *pPrec = nullptr, *pFrate = nullptr, *pFiu = nullptr;
 };
 
 class HeapBinomial {
 private:
     Nod *m_pStart;
-    Nod *m_pMaxim;
 
     static void faSubarboreStang(Nod *viitorSubarbore, Nod *tata) {
         viitorSubarbore->pFrate = tata->pFiu;
-        viitorSubarbore->pTata = tata;
         tata->pFiu = viitorSubarbore;
         tata->ordin++;
     }
@@ -31,16 +25,8 @@ private:
             return;
         }
 
-        // Recalculeaza maximul (de la 0)
-        m_pMaxim = m_pStart;
-
         Nod *pCurr = m_pStart, *pUrm = pCurr->pFrate, *pPrec = nullptr;
         while (pUrm) {
-            // Actualizeaza maximul
-            if (pUrm->val > m_pMaxim->val) {
-                m_pMaxim = pUrm;
-            }
-
             if (pCurr->ordin != pUrm->ordin) {
                 // Arborele curent si urmatorul nu trebuie reuniti (neavand acelasi ordin)
                 pPrec = pCurr;
@@ -63,18 +49,23 @@ private:
 
                     if (pCurr->val > pUrm->val) {
                         // Arborele urmator trebuie unit in cel curent
-                        Nod *pUrmUrm = pUrm->pFrate;
+                        pCurr->pFrate = pUrm->pFrate;
                         faSubarboreStang(pUrm, pCurr);
-                        pCurr->pFrate = pUrmUrm;
+
+                        // pPrec si pCurr nu se modifica, din moment ce pPrec-pCurr-pUrm devine pPrec-[pCurr->pUrm]-pUrm actualizat
+                        pUrm = pUrm->pFrate;
                     } else {
                         // Arborele curent trebuie unit in cel urmator
-
                         if (pPrec) {
                             pPrec->pFrate = pUrm;
                         } else {
                             m_pStart = pUrm;
                         }
                         faSubarboreStang(pCurr, pUrm);
+
+                        // pPrec nu se modifica, din moment ce pPrec-pCurr-pUrm devine pPrec-[pUrm->pCurr]-pUrm actualizat
+                        pCurr = pUrm;
+                        pUrm = pUrm->pFrate;
                     }
                 }
             }
@@ -87,12 +78,7 @@ public:
         Nod *pNod = new Nod();
         pNod->val = val;
 
-        // Actualizeaza maximul (stocat pentru a avea lookup in O(1))
-        if (!m_pMaxim || (m_pMaxim && pNod->val > m_pMaxim->val)) {
-            m_pMaxim = pNod;
-        }
-
-        // Insereaza arborele la inceput, ca sa se pastreze ordinea crescatoare a arborilor din colectie
+        // Insereaza arborele la inceput, ca sa se pastreze ordinea crescatoare a arborilor (dpdv. al ordinului)
         pNod->pFrate = m_pStart;
         m_pStart = pNod;
 
@@ -144,6 +130,20 @@ public:
     }
 
     void extrageMaxim() {
+        // Problema ne asigura ca nu se va extrage dintr-un heap vid, deci sigur exista primul element
+        int maxValue = m_pStart->val;
+        Nod *pPrecMaxim = nullptr, *pMaxim = m_pStart;
+
+        Nod *pIt = m_pStart;
+        while (pIt && pIt->pFrate) {
+            if (pIt->pFrate->val > maxValue) {
+                pPrecMaxim = pIt;
+                maxValue = pIt->pFrate->val;
+                pMaxim = pIt->pFrate;
+            }
+            pIt = pIt->pFrate;
+        }
+
         // Inainte de a sterge nodul de minim, trebuie sa vedem ce facem cu subarborii...
         // Ideea este sa ii punem intr-un nou heap binomial pe care sa il reunim cu cel curent
         HeapBinomial *subarbori = new HeapBinomial();
@@ -151,54 +151,46 @@ public:
         // Creeaza heap-ul din subarbori, sortandu-i in ordine crescatoare, dupa ordin.
         // Subarborii unui nod sunt in ordine descrescatoare a ordinului (fiii lui B_k sunt B_(k-1), B_(k-2), ..., B_0),
         // deci ordinea lor va trebui inversata
-        Nod *pCurr = m_pMaxim->pFiu;
+        Nod *pCurr = pMaxim->pFiu;
         while (pCurr) {
             Nod *pFrate = pCurr->pFrate;
 
             pCurr->pFrate = subarbori->m_pStart;
-            pCurr->pTata = nullptr;
             subarbori->m_pStart = pCurr;
 
             pCurr = pFrate;
         }
 
         // Sterge nodul de maxim, inlocuindu-l cu urmatorul arbore din heap
-        Nod *temp = m_pMaxim->pFrate;
-        if (m_pMaxim->pFrate) {
-            *m_pMaxim = *m_pMaxim->pFrate;
+        if (pPrecMaxim == nullptr) {
+            m_pStart = pMaxim->pFrate;
         } else {
-            if (m_pStart == m_pMaxim) {
-                m_pStart = nullptr;
-                delete m_pMaxim;
-                m_pMaxim = nullptr;
-            } else {
-                Nod *nodIt = m_pStart;
-                while (nodIt->pFrate != m_pMaxim) {
-                    nodIt = m_pStart->pFrate;
-                }
-                nodIt->pFrate = nullptr;
-            }
+            pPrecMaxim->pFrate = pMaxim->pFrate;
         }
-        delete temp;
 
         // Reuneste heap-ul curent si cel al subarborilor
         HeapBinomial *pHeapReunit = reuneste(this, subarbori);
         *this = *pHeapReunit;
-        delete pHeapReunit;
-        delete subarbori;
     }
 
-    int getMaxim() const {
-        if (m_pMaxim) {
-            return m_pMaxim->val;
-        } else {
-            return -1;
+    Nod *getMaxim() const {
+        int maxValue = INT_MIN;
+        Nod *pNodMax = nullptr;
+
+        Nod *pIt = m_pStart;
+        while (pIt) {
+            if (pIt->val > maxValue) {
+                maxValue = pIt->val;
+                pNodMax = pIt;
+            }
+            pIt = pIt->pFrate;
         }
+
+        return pNodMax;
     }
 
     void reset() {
         m_pStart = nullptr;
-        m_pMaxim = nullptr;
     }
 };
 
@@ -224,7 +216,7 @@ int main() {
         } else if (op == 2) {
             cin >> m;
 
-            cout << h[m].getMaxim() << "\n";
+            cout << h[m].getMaxim()->val << "\n";
             h[m].extrageMaxim();
         } else if (op == 3) {
             cin >> a >> b;
